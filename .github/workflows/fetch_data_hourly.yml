@@ -1,0 +1,41 @@
+name: Fetch Data Hourly
+
+on:
+  schedule:
+    # Run every hour at 5 minutes past the hour (e.g., 00:00, 01:00, 02:00 UTC)
+    - cron: '5 * * * *'
+  workflow_dispatch: # Allows manual trigger for testing
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: aqi-prediction-image
+  USER_NAME: martinrajniak
+
+jobs:
+  fetch-data:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read   # Required for actions/checkout
+      packages: read   # Crucial for pulling images from GHCR (read access)
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4 # TODO: use specific SHA to avoid supply chain attack
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull Docker Image
+        run: docker pull ${{ env.REGISTRY }}/${{ env.USER_NAME }}/${{ env.IMAGE_NAME}}:latest
+
+      - name: Run Fetch Data Script in Docker
+        run: docker run --rm \
+              -e AQI_TOKEN="${{ secrets.AQI_TOKEN }}" \
+              -e HOPSWORKS_AQI_TOKEN="${{ secrets.HOPSWORKS_AQI_TOKEN }}" \
+              ${{ env.REGISTRY }}/${{ env.USER_NAME }}/${{ env.IMAGE_NAME}}:latest \
+              python src/fetch_data.py # TODO: change docker image to use CMD ["python"] (we won't run anything else)
