@@ -40,4 +40,4 @@ jobs:
             -e AQI_TOKEN="${{ secrets.AQI_TOKEN }}" \
             -e HOPSWORKS_AQI_TOKEN="${{ secrets.HOPSWORKS_AQI_TOKEN }}" \
             ${{ env.REGISTRY }}/${{ env.USER_NAME }}/${{ env.IMAGE_NAME}}:latest \
-            python src/fetch_data.py 
+            python scripts/fetch_data.py 
