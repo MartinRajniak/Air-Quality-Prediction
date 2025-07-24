@@ -33,9 +33,11 @@ jobs:
       - name: Pull Docker Image
         run: docker pull ${{ env.REGISTRY }}/${{ env.USER_NAME }}/${{ env.IMAGE_NAME}}:latest
 
+      # TODO: change docker image to use CMD ["python"] (we won't run anything else)
       - name: Run Fetch Data Script in Docker
-        run: docker run --rm \
-              -e AQI_TOKEN="${{ secrets.AQI_TOKEN }}" \
-              -e HOPSWORKS_AQI_TOKEN="${{ secrets.HOPSWORKS_AQI_TOKEN }}" \
-              ${{ env.REGISTRY }}/${{ env.USER_NAME }}/${{ env.IMAGE_NAME}}:latest \
-              python src/fetch_data.py # TODO: change docker image to use CMD ["python"] (we won't run anything else)
+        run: |
+          docker run --rm \
+            -e AQI_TOKEN="${{ secrets.AQI_TOKEN }}" \
+            -e HOPSWORKS_AQI_TOKEN="${{ secrets.HOPSWORKS_AQI_TOKEN }}" \
+            ${{ env.REGISTRY }}/${{ env.USER_NAME }}/${{ env.IMAGE_NAME}}:latest \
+            python src/fetch_data.py 
