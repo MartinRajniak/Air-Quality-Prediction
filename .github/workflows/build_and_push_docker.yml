@@ -11,7 +11,8 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: aqi-prediction-image
+  APP_IMAGE_NAME: aqi-prediction-image
+  USER_NAME: martin_rajniak
 
 jobs:
   build-and-push:
@@ -39,6 +40,6 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest # Tag as 'latest' for general use
+          tags: ${{ env.REGISTRY }}/${{ env.USER_NAME }}/${{ env.APP_IMAGE_NAME }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
