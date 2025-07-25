@@ -25,6 +25,10 @@ COPY requirements.txt .
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
+# TODO: cron jobs fail when application code is stale on docker image but we do not rebuild the image on code changes
+# Either don't copy the code and instead mount the code directory at runtime
+# or rebuild the image on code changes
+
 # Copy the rest of your application code into the container 
 # Ignore everything in .dockerignore
 COPY . .

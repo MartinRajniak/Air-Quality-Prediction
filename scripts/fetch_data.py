@@ -5,15 +5,20 @@ import hopsworks
 from hsfs.feature import Feature
 from datetime import datetime
 import pandas as pd
-import logging
 import sys
+from pathlib import Path
+import logging
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(name)s - %(message)s"
 )
 
-# Get a logger instance for your module
-logger = logging.getLogger(__name__)
+PROJECT_ROOT = str(Path(__file__).parent.parent)
+sys.path.append(PROJECT_ROOT)
+
+from src.common import LOGGER_NAME
+
+LOGGER = logging.getLogger(LOGGER_NAME)
 
 
 def fetch_current_iaqi():
@@ -80,7 +85,7 @@ def save_to_feature_store(current_iaqi_df):
 
     iaqi_fg = feature_store.get_or_create_feature_group(
         name="iaqi",
-        version=1, # TODO: update when schema changes
+        version=1,  # TODO: update when schema changes
         description="Individual AQI and weather hourly data",
         primary_key=["event_timestamp"],
         event_time="event_timestamp",
@@ -88,7 +93,7 @@ def save_to_feature_store(current_iaqi_df):
         features=features,
     )
 
-    logger.info(
+    LOGGER.info(
         f"Feature Group '{iaqi_fg.name}' (version {iaqi_fg.version}) retrieved or created successfully."
     )
 
@@ -96,24 +101,24 @@ def save_to_feature_store(current_iaqi_df):
         iaqi_fg.insert(current_iaqi_df)
         return "Successfully updated feature store"
     except Exception as e:
-        logger.error(f"Failed to update feature group: {e}")
+        LOGGER.error(f"Failed to update feature group: {e}")
         return "Failed to update feature group: insertion error"
 
 
 if __name__ == "__main__":
     # TODO: comment out for production
-    # logging.getLogger().setLevel(logging.DEBUG)
+    # LOGGER.setLevel(logging.DEBUG)
 
-    logger.info("Fetching current IAQI values...")
+    LOGGER.info("Fetching current IAQI values...")
     result = fetch_current_iaqi()
     if not isinstance(result, pd.DataFrame):
-        logger.error(f"Failed to fetch current IAQI values: {result}")
+        LOGGER.error(f"Failed to fetch current IAQI values: {result}")
         sys.exit(1)
 
-    logger.info("Successfully fetched current IAQI values.")
-    logger.debug(f"Current IAQI values:\n{result}")
+    LOGGER.info("Successfully fetched current IAQI values.")
+    LOGGER.debug(f"Current IAQI values:\n{result}")
     current_iaqi_df = result
 
-    logger.info("Saving current IAQI values to feature store...")
+    LOGGER.info("Saving current IAQI values to feature store...")
     result = save_to_feature_store(current_iaqi_df)
-    logger.info(result)
+    LOGGER.info(result)

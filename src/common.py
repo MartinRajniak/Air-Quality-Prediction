@@ -1,0 +1,1 @@
+LOGGER_NAME = "air_quality_prediction"
