@@ -61,7 +61,7 @@ if __name__ == "__main__":
 
     LOGGER.info("Scaling features...")
     feature_scaler = FeatureScaler()
-    train_df, val_df, test_df = feature_scaler.fit_transform(train_df, val_df, test_df)
+    train_df, val_df, test_df = feature_scaler.fit(train_df, val_df, test_df)
     LOGGER.debug(train_df.head())
 
     LOGGER.info("Creating lagged feature windows...")
@@ -96,8 +96,13 @@ if __name__ == "__main__":
     multi_regressor = xgboost.create_regressor()
     multi_regressor.fit(X_flat_train, y_flat_train)
 
-    # TODO: save regressor as artifact that can be used by website
-
     LOGGER.info(f"Evaluating regressor...")
     y_pred = multi_regressor.predict(X_flat_test)
     evaluate_predictions(y_true=y_flat_test, y_pred=y_pred, window_size=prediction_window_size, original_columns=merged_df.columns)
+
+    # TODO: save in model repository (attach evaluation metrics)
+
+    # TODO: upload predictor script
+
+    # TODO: create deployment
+

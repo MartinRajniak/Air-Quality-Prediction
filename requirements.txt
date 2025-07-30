@@ -2,3 +2,9 @@ requests
 # Current backend version
 hopsworks[python]==4.2.2
 pandas
+xgboost
+joblib
+numpy
+holidays
+scikit-learn
+meteostat

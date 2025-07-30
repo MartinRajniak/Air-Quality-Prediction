@@ -1,15 +1,16 @@
 import pandas as pd
-import hopsworks
 import os
 import logging
 import datetime
 
 from src.common import LOGGER_NAME
+from src.hopsworks.client import HopsworksClient
 
 LOGGER = logging.getLogger(LOGGER_NAME)
 
 def load_data(project_root):
     # TODO: stop using historical data once we have enough of hourly data
+    # historical data is rounded but without rounding we might get better predictions (especially for CO)
     hist_aqi_df = _load_historical_data(project_root)
     current_aqi_df = _load_current_data()
     aqi_df = pd.concat([hist_aqi_df, current_aqi_df], axis=0)
@@ -24,19 +25,10 @@ def _load_historical_data(project_root):
     return aqi_df
 
 def _load_current_data():
-    hopsworks_aqi_token = os.environ["HOPSWORKS_AQI_TOKEN"]
-    project = hopsworks.login(api_key_value=hopsworks_aqi_token)
-    feature_store = project.get_feature_store()
+    hopsworks_client = HopsworksClient()
+    iaqi_fg_df = hopsworks_client.load_hourly_data()
 
-    iaqi_fg = feature_store.get_feature_group(
-        name="iaqi",
-        version=1
-    )
-
-    iaqi_fg_df = iaqi_fg.select(["event_timestamp", "pm25", "pm10", "no2", "so2", "co"]).read()
-    # Remove TimeZone info and reset to 0 hours so that it can be compared to historical data
-    iaqi_fg_df["event_timestamp"] = pd.to_datetime(iaqi_fg_df["event_timestamp"]).dt.tz_localize(None).dt.normalize()
-    # TODO: historical data is rounded but without rounding we might get better predictions (especially for CO)
+    # Hourly -> Daily (since we are still using historical data that are daily)
     iaqi_fg_df = iaqi_fg_df.groupby(iaqi_fg_df["event_timestamp"], as_index=True).mean()
     iaqi_fg_df = iaqi_fg_df.sort_index()
 
