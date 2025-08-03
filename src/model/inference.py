@@ -2,7 +2,11 @@ import pandas as pd
 from pandas import DataFrame
 import numpy as np
 
-import torch
+try:
+    import torch
+    HAS_TORCH = True
+except:
+    HAS_TORCH = False
 
 from src.data.features import _flatten_windows, _split_to_windows
 
@@ -21,7 +25,7 @@ def recursive_forecasting(model, input: DataFrame, historical_window_size, predi
         target_window = input.iloc[:0].copy()
         for day_index in range(num_of_predictions):
             # Model expects multiple windows
-            if torch:
+            if HAS_TORCH and torch:
                 y_pred = torch_predict(model, [input_window])
             else:
                 y_pred = predict(model, [input_window])

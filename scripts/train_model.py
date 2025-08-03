@@ -8,9 +8,11 @@ sys.path.append(PROJECT_ROOT)
 
 from src.data import aqi, meteo
 from src.data.calendar import add_calendar_features
-from src.data.features import FeatureScaler, split_to_windows, flatten_windows
+from src.data.features import FeatureScaler, split_to_windows, flatten_windows, _flatten_windows
 from src.model.training import split_data
-from src.model.evaluation import evaluate_predictions
+from src.model.evaluation import evaluate_predictions, print_prediction_metrics
+from src.model.inference import recursive_forecasting
+from src.hopsworks.client import HopsworksClient
 from src.model import xgboost
 from src.common import LOGGER_NAME
 
@@ -49,6 +51,7 @@ if __name__ == "__main__":
     # but once we have hourly AQI data, download hourly meteo as well
     LOGGER.info("Fetching meteo features...")
     weather_df = meteo.fetch_daily_data(aqi_df)
+    weather_df = meteo.clean_missing_values(weather_df)
     LOGGER.debug(weather_df.head())
 
     LOGGER.info("Merging AQI and METEO data...")
@@ -57,11 +60,17 @@ if __name__ == "__main__":
     merged_df = merged_df.astype(float)
     LOGGER.debug(merged_df.head())
 
+    target_columns = merged_df.columns
+
     train_df, val_df, test_df = split_data(merged_df)
 
     LOGGER.info("Scaling features...")
     feature_scaler = FeatureScaler()
-    train_df, val_df, test_df = feature_scaler.fit(train_df, val_df, test_df)
+    feature_scaler.fit(train_df)
+
+    train_df = feature_scaler.transform(train_df)
+    val_df = feature_scaler.transform(val_df)
+    test_df = feature_scaler.transform(test_df)
     LOGGER.debug(train_df.head())
 
     LOGGER.info("Creating lagged feature windows...")
@@ -73,12 +82,12 @@ if __name__ == "__main__":
         y_window_val,
         y_window_test,
     ) = split_to_windows(
-        train_df, val_df, test_df, historical_window_size, prediction_window_size
+        train_df, val_df, test_df, historical_window_size, prediction_window_size, target_columns=target_columns
     )
     LOGGER.debug(f"Last X window:\n{X_window_test[-1]}")
     LOGGER.debug(f"Last y window:\n{y_window_test[-1]}")
 
-    LOGGER.info("Creating flat window features for regressors...")
+    LOGGER.info("Creating flat window features for model...")
     X_flat_train, X_flat_val, X_flat_test, y_flat_train, y_flat_val, y_flat_test = (
         flatten_windows(
             X_window_train,
@@ -92,17 +101,26 @@ if __name__ == "__main__":
     LOGGER.debug(f"Last X sample:\n{X_flat_test[-1]}")
     LOGGER.debug(f"Last y sample:\n{y_flat_test[-1]}")
 
-    LOGGER.info(f"Fitting regressor...")
-    multi_regressor = xgboost.create_regressor()
-    multi_regressor.fit(X_flat_train, y_flat_train)
+    LOGGER.info(f"Fitting model...")
+    model = xgboost.create_regressor()
+    model.fit(X_flat_train, y_flat_train)
 
-    LOGGER.info(f"Evaluating regressor...")
-    y_pred = multi_regressor.predict(X_flat_test)
-    evaluate_predictions(y_true=y_flat_test, y_pred=y_pred, window_size=prediction_window_size, original_columns=merged_df.columns)
+    LOGGER.info(f"Evaluating model...")
+    actual, predictions = recursive_forecasting(model, test_df, historical_window_size, prediction_window_size, num_of_predictions)
 
-    # TODO: save in model repository (attach evaluation metrics)
+    predictions = [feature_scaler.inverse_transform(prediction) for prediction in predictions]
+    actual = [feature_scaler.inverse_transform(value) for value in actual]
 
-    # TODO: upload predictor script
+    flat_predictions = _flatten_windows(predictions)
+    flat_actual = _flatten_windows(actual)
 
-    # TODO: create deployment
+    prediction_metrics = evaluate_predictions(y_true=flat_actual, y_pred=flat_predictions, window_size=prediction_window_size*num_of_predictions)
+    print_prediction_metrics(prediction_metrics, target_columns)
 
+    LOGGER.info(f"Saving model to model registry...")
+    hopsworks_model = HopsworksClient().save_model(PROJECT_ROOT, model, prediction_metrics, X_flat_test[0], y_flat_test[0], feature_scaler)
+    LOGGER.debug(f"Hopsworks Model:\n{hopsworks_model.description}")
+
+    LOGGER.info(f"Deploying model...")
+    deployment = HopsworksClient().deploy_model(hopsworks_model, overwrite=False)
+    LOGGER.debug(f"Hopsworks Deployment:\n{deployment.describe()}")

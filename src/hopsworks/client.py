@@ -13,6 +13,7 @@ from hsml.resources import PredictorResources, Resources
 from hsml.model import Model
 
 from src.utils import singleton
+from src.common import IAQI_FEATURES
 
 MODEL_NAME = "aqi_prediction_model"
 
@@ -44,11 +45,11 @@ class HopsworksClient:
         self,
         project_root,
         model,
-        metrics,
+        prediction_metrics,
         input_example,
         output_example,
         feature_scaler,
-    ):
+    ) -> Model:
         # 0. Prepare temp folder for deployment
         DEPLOYMENT_FOLDER = "deployment"
         deployment_path = os.path.join(project_root, DEPLOYMENT_FOLDER)
@@ -87,6 +88,8 @@ class HopsworksClient:
         # 6. Save everything
         model_registry: ModelRegistry = self.project.get_model_registry()
 
+        metrics = self._format_metrics(prediction_metrics)
+
         input_schema = Schema(input_example)
         output_schema = Schema(output_example)
         model_schema = ModelSchema(
@@ -105,6 +108,19 @@ class HopsworksClient:
 
         return aqi_model
 
+    def _format_metrics(self, prediction_metrics):
+        metrics = {}
+        for column_index, aqi in enumerate(IAQI_FEATURES):
+            aqi_metrics = {}
+
+            for day_metrics in prediction_metrics:
+                for (metric_name, metric_value) in day_metrics[column_index].items():
+                    aqi_metrics.setdefault(metric_name, []).append(metric_value)
+            
+            for aqi_metric_name, aqi_metric_value in aqi_metrics.items():
+                metrics[f"{aqi}_{aqi_metric_name}"] = round(sum(aqi_metric_value) / len(aqi_metric_value), 4)
+        return metrics
+
     def load_model(self, version=1):
         model_registry: ModelRegistry = self.project.get_model_registry()
         retrieved_model = model_registry.get_model(MODEL_NAME, version)
@@ -113,24 +129,39 @@ class HopsworksClient:
         model = joblib.load(model_file_path)
         return retrieved_model, model
 
-    def deploy_model(self, model: Model, overwrite=False) -> Deployment:
+    def deploy_model(self, hopsworks_model: Model, overwrite=False) -> Deployment:
+        environment_api = self.project.get_environment_api()
+        # Unfortunately, environment has to be created through UI for now
+        environment = environment_api.get_environment("aqi-inference-pipeline-v1")
+        if (not environment):
+            raise Exception("Environment 'aqi-inference-pipeline-v1' has to be set up.")
+
+        # 1. Install requirements based on requirements.txt
+        requirements_path = os.path.join(hopsworks_model.version_path, "Files", "requirements.txt")
+        environment.install_requirements(requirements_path, await_installation=True)
+
+        # 2. Destroy previous deployment
+        deployment_name = "aqipredictionmodeldeployment"
+        model_serving = HopsworksClient().project.get_model_serving()
+
+        deployment: Deployment = model_serving.get_deployment(deployment_name)
+        if overwrite and deployment:
+            deployment.stop()
+            deployment.delete()
+
+        predictor_script_path = os.path.join(hopsworks_model.version_path, "Files", "predictor.py")
+
         predictor_res = PredictorResources(
             num_instances=0,
             requests=Resources(cores=0.5, memory=512, gpus=0),
             limits=Resources(cores=0.5, memory=1024, gpus=0),
         )
 
-        deployment_name = "aqipredictionmodeldeployment"
-
-        model_serving = self.project.get_model_serving()
-        deployment: Deployment = model_serving.get_deployment(deployment_name)
-        if overwrite and deployment:
-            deployment.stop()
-            deployment.delete()
-
-        deployment = model.deploy(
+        deployment = hopsworks_model.deploy(
             name=deployment_name,
-            # script_file=predictor_script_path,
+            script_file=predictor_script_path,
             resources=predictor_res,
+            environment="aqi-inference-pipeline-v1"
         )
+
         return deployment
