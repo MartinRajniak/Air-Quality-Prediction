@@ -45,7 +45,7 @@ class HopsworksClient:
         self,
         project_root,
         model,
-        prediction_metrics,
+        metrics,
         input_example,
         output_example,
         feature_scaler,
@@ -88,8 +88,6 @@ class HopsworksClient:
         # 6. Save everything
         model_registry: ModelRegistry = self.project.get_model_registry()
 
-        metrics = self._format_metrics(prediction_metrics)
-
         input_schema = Schema(input_example)
         output_schema = Schema(output_example)
         model_schema = ModelSchema(
@@ -108,17 +106,41 @@ class HopsworksClient:
 
         return aqi_model
 
-    def _format_metrics(self, prediction_metrics):
+    def format_metrics(self, prediction_metrics, target_std_devs):
         metrics = {}
+        all_nrmse_scores = []
+        all_r2_scores = []
+        
         for column_index, aqi in enumerate(IAQI_FEATURES):
             aqi_metrics = {}
+            aqi_nrmse_scores = []
+            aqi_r2_scores = []
 
             for day_metrics in prediction_metrics:
                 for (metric_name, metric_value) in day_metrics[column_index].items():
                     aqi_metrics.setdefault(metric_name, []).append(metric_value)
             
-            for aqi_metric_name, aqi_metric_value in aqi_metrics.items():
-                metrics[f"{aqi}_{aqi_metric_name}"] = round(sum(aqi_metric_value) / len(aqi_metric_value), 4)
+            for aqi_metric_name, aqi_metric_values in aqi_metrics.items():
+                avg_value = sum(aqi_metric_values) / len(aqi_metric_values)
+                
+                if aqi_metric_name == 'rmse':
+                    # Convert RMSE to NRMSE
+                    nrmse = avg_value / target_std_devs[column_index]
+                    metrics[f"{aqi}_nrmse"] = round(nrmse, 4)
+                    aqi_nrmse_scores.append(nrmse)
+                    all_nrmse_scores.extend([v / target_std_devs[column_index] for v in aqi_metric_values])
+                elif aqi_metric_name == 'r2_score':
+                    metrics[f"{aqi}_r2"] = round(avg_value, 4)
+                    aqi_r2_scores.append(avg_value)
+                    all_r2_scores.extend(aqi_metric_values)
+                else:
+                    # Keep other metrics as-is
+                    metrics[f"{aqi}_{aqi_metric_name}"] = round(avg_value, 4)
+        
+        # Overall summary metrics
+        metrics['overall_nrmse'] = round(sum(all_nrmse_scores) / len(all_nrmse_scores), 4)
+        metrics['overall_r2'] = round(sum(all_r2_scores) / len(all_r2_scores), 4)
+        
         return metrics
 
     def load_model(self, version=1):

@@ -8,9 +8,9 @@ sys.path.append(PROJECT_ROOT)
 
 from src.data import aqi, meteo
 from src.data.calendar import add_calendar_features
-from src.data.features import FeatureScaler, split_to_windows, flatten_windows, _flatten_windows
+from src.data.features import FeatureScaler, split_to_windows, flatten_windows
 from src.model.training import split_data
-from src.model.evaluation import evaluate_predictions, print_prediction_metrics
+from src.model.evaluation import evaluate_iaqi_predictions, create_metrics_dataframe, get_day_n_metrics
 from src.model.inference import recursive_forecasting
 from src.hopsworks.client import HopsworksClient
 from src.model import xgboost
@@ -111,16 +111,18 @@ if __name__ == "__main__":
     predictions = [feature_scaler.inverse_transform(prediction) for prediction in predictions]
     actual = [feature_scaler.inverse_transform(value) for value in actual]
 
-    flat_predictions = _flatten_windows(predictions)
-    flat_actual = _flatten_windows(actual)
-
-    prediction_metrics = evaluate_predictions(y_true=flat_actual, y_pred=flat_predictions, window_size=prediction_window_size*num_of_predictions)
-    print_prediction_metrics(prediction_metrics, target_columns)
+    prediction_metrics = evaluate_iaqi_predictions(y_true=actual, y_pred=predictions, prediction_window_size=prediction_window_size, num_of_predictions=num_of_predictions)
+    prediction_metrics_df = create_metrics_dataframe(prediction_metrics)
+    LOGGER.debug(prediction_metrics_df.to_string(float_format="%.2f"))
 
     LOGGER.info(f"Saving model to model registry...")
-    hopsworks_model = HopsworksClient().save_model(PROJECT_ROOT, model, prediction_metrics, X_flat_test[0], y_flat_test[0], feature_scaler)
+    # Using recursive forecasting - error is cumulative - cannot improve Day 3 prediction without improving Day 1 - so last day's results are enough
+    last_day_metrics = get_day_n_metrics(prediction_metrics, prediction_window_size * num_of_predictions)
+    # Using single metric for model comparison - The Willmott index - it gives credit for correlation but heavily penalizes systematic errors that would make the forecasts unreliable for air quality management.
+    metrics = last_day_metrics["Willmott"]
+    hopsworks_model = HopsworksClient().save_model(PROJECT_ROOT, model, metrics, X_flat_test[0], y_flat_test[0], feature_scaler)
     LOGGER.debug(f"Hopsworks Model:\n{hopsworks_model.description}")
 
     LOGGER.info(f"Deploying model...")
     deployment = HopsworksClient().deploy_model(hopsworks_model, overwrite=False)
-    LOGGER.debug(f"Hopsworks Deployment:\n{deployment.describe()}")
+    LOGGER.debug(f"Hopsworks Deployment:\n{deployment}")
