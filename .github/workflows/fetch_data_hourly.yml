@@ -31,7 +31,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Pull Docker Image
-        run: docker pull ${{ env.REGISTRY }}/${{ env.USER_NAME }}/${{ env.IMAGE_NAME}}:latest
+        run: docker pull ${{ env.REGISTRY }}/${{ env.USER_NAME }}/${{ env.IMAGE_NAME }}:latest
 
       # TODO: change docker image to use CMD ["python"] (we won't run anything else)
       - name: Run Fetch Data Script in Docker
