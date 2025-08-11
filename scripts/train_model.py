@@ -1,7 +1,8 @@
+import pandas as pd
+
 import logging
 import sys
 from pathlib import Path
-import pandas as pd
 
 PROJECT_ROOT = str(Path(__file__).parent.parent)
 sys.path.append(PROJECT_ROOT)
@@ -122,7 +123,3 @@ if __name__ == "__main__":
     metrics = last_day_metrics["Willmott"]
     hopsworks_model = HopsworksClient().save_model(PROJECT_ROOT, model, metrics, X_flat_test[0], y_flat_test[0], feature_scaler)
     LOGGER.debug(f"Hopsworks Model:\n{hopsworks_model.description}")
-
-    LOGGER.info(f"Deploying model...")
-    deployment = HopsworksClient().deploy_model(hopsworks_model, overwrite=False)
-    LOGGER.debug(f"Hopsworks Deployment:\n{deployment}")

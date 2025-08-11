@@ -143,6 +143,23 @@ class HopsworksClient:
         
         return metrics
 
+    def get_best_model_version(self):
+        model_registry: ModelRegistry = self.project.get_model_registry()
+        model_versions = model_registry.get_models(MODEL_NAME)
+
+        best_model = None
+        best_score = -1
+
+        for model in model_versions:
+            metrics = model.training_metrics
+            if metrics:
+                score = sum(metrics.values()) / len(metrics.values())
+                if score > best_score:
+                    best_score = score
+                    best_model = model
+        
+        return best_model.version
+
     def load_model(self, version=1):
         model_registry: ModelRegistry = self.project.get_model_registry()
         retrieved_model = model_registry.get_model(MODEL_NAME, version)
