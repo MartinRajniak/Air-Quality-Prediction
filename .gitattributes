@@ -1,0 +1,2 @@
+# Ignore ipynb as a language in this repo - it is mostly about python and docker scripts
+*.ipynb linguist-vendored
